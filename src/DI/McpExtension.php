@@ -14,16 +14,20 @@ use Contributte\Mcp\Server\ServerFactory;
 use Contributte\Mcp\Tracy\McpPanel;
 use GuzzleHttp\Psr7\HttpFactory;
 use Mcp\Capability\Registry;
+use Mcp\Capability\Tool\NameValidator;
 use Mcp\Server\Builder;
+use Mcp\Server\NativeClock;
 use Mcp\Server\Session\FileSessionStore;
 use Mcp\Server\Session\InMemorySessionStore;
-use Mcp\Server\Session\Psr16StoreSession;
+use Mcp\Server\Session\Psr16SessionStore;
 use Nette\Application\IPresenterFactory;
 use Nette\DI\CompilerExtension;
+use Nette\DI\ContainerBuilder;
 use Nette\DI\Definitions\ServiceDefinition;
 use Nette\DI\Definitions\Statement;
 use Nette\Schema\Expect;
 use Nette\Schema\Schema;
+use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use stdClass;
@@ -34,9 +38,9 @@ use stdClass;
 class McpExtension extends CompilerExtension
 {
 
-	public const string SERVER_TAG = 'contributte.mcp.server';
-	public const string SERVER_FACTORY_TAG = 'contributte.mcp.server_factory';
-	public const string TRANSPORT_FACTORY_TAG = 'contributte.mcp.transport_factory';
+	public const SERVER_TAG = 'contributte.mcp.server';
+	public const SERVER_FACTORY_TAG = 'contributte.mcp.server_factory';
+	public const TRANSPORT_FACTORY_TAG = 'contributte.mcp.transport_factory';
 
 	public function getConfigSchema(): Schema
 	{
@@ -84,6 +88,8 @@ class McpExtension extends CompilerExtension
 		foreach ($config->servers as $serverName => $serverConfig) {
 			$this->loadServerConfiguration($serverName, $serverConfig);
 		}
+
+		$this->registerCompatibility($builder);
 
 		$loggerDef = $builder->addDefinition($this->prefix('logger'))
 			->setFactory(NullLogger::class)
@@ -136,6 +142,16 @@ class McpExtension extends CompilerExtension
 				],
 			]);
 		}
+	}
+
+	protected function registerCompatibility(ContainerBuilder $builder): void
+	{
+		$builder->addDefinition($this->prefix('clock'))
+			->setFactory(NativeClock::class)
+			->setType(ClockInterface::class);
+
+		$builder->addDefinition($this->prefix('nameValidator'))
+			->setFactory(NameValidator::class);
 	}
 
 	private function loadServerConfiguration(string $serverName, stdClass $serverConfig): void
@@ -198,7 +214,7 @@ class McpExtension extends CompilerExtension
 				}
 
 				$cacheService = BuilderMan::of($this)->resolveService($serverConfig->session->cache);
-				$sessionStore = new Statement(Psr16StoreSession::class, [$cacheService, $serverConfig->session->prefix, $serverConfig->session->ttl]);
+				$sessionStore = new Statement(Psr16SessionStore::class, [$cacheService, $serverConfig->session->prefix, $serverConfig->session->ttl]);
 				break;
 			default:
 				$sessionStore = null;
